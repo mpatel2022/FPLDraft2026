@@ -18,15 +18,9 @@ url_all = 'https://draft.premierleague.com/api/bootstrap-static'
 
 max_gameweek = 38
 
-r = requests.get(url_all)
-
-all_data = r.json()
-
 refresh_core_data = False
-refresh = True
 
 IMAGES_LOCATION = 'assets\\'
-
 
 colour_grey_black = "#363434"
 colour_white = "white"
@@ -210,6 +204,12 @@ def get_aggregate_data_based_on_filter(merged_df, filter_type):
 
 
 if refresh_core_data:
+    r = requests.get(url_all)
+    all_data = r.json()
+
+    with open('metadata.pickle', 'wb') as handle:
+        pickle.dump(all_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
     # Get the team logos and store in resources
     shirt_logos_url = "https://fantasy.premierleague.com/dist/img/shirts/standard/"
     team_badges_url = "https://resources.premierleague.com/premierleague25/badges/"
@@ -220,6 +220,8 @@ if refresh_core_data:
         save_image_data(shirt_logos_url, shirt_logo_name, IMAGES_LOCATION)
         save_image_data(team_badges_url, f'{team_code}.webp', IMAGES_LOCATION)        
 
+with open('metadata.pickle', 'rb') as handle:
+    all_data = pickle.load(handle)    
 
 # Mapping
 # Teams
