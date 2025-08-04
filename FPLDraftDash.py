@@ -207,7 +207,7 @@ if refresh_core_data:
     r = requests.get(url_all)
     all_data = r.json()
 
-    with open('metadata.pickle', 'wb') as handle:
+    with open('FPLDraft2026\\metadata.pickle', 'wb') as handle:
         pickle.dump(all_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     # Get the team logos and store in resources
@@ -220,7 +220,7 @@ if refresh_core_data:
         save_image_data(shirt_logos_url, shirt_logo_name, IMAGES_LOCATION)
         save_image_data(team_badges_url, f'{team_code}.webp', IMAGES_LOCATION)        
 
-with open('metadata.pickle', 'rb') as handle:
+with open('FPLDraft2026\\metadata.pickle', 'rb') as handle:
     all_data = pickle.load(handle)    
 
 # Mapping
