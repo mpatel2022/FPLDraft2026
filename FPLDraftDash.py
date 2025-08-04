@@ -15,7 +15,7 @@ import pickle
 # league id found by going to the end point: https://draft.premierleague.com/api/bootstrap-dynamic
 league_id = 43259
 url_all = 'https://draft.premierleague.com/api/bootstrap-static'
-local_location = "home\\mpatel99\\FPLDraft2026"
+local_dir = "home\\mpatel99\\FPLDraft2026"
 max_gameweek = 38
 
 refresh_core_data = False
