@@ -15,7 +15,7 @@ import pickle
 # league id found by going to the end point: https://draft.premierleague.com/api/bootstrap-dynamic
 league_id = 43259
 url_all = 'https://draft.premierleague.com/api/bootstrap-static'
-local_dir = "/home/mpatel99/FPLDraft2026"
+LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
 max_gameweek = 38
 
 refresh_core_data = False
@@ -207,7 +207,7 @@ if refresh_core_data:
     r = requests.get(url_all)
     all_data = r.json()
 
-    with open(f'{local_dir}/metadata.pickle', 'wb') as handle:
+    with open(f'{LOCAL_DIR}/metadata.pickle', 'wb') as handle:
         pickle.dump(all_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     # Get the team logos and store in resources
@@ -220,7 +220,7 @@ if refresh_core_data:
         save_image_data(shirt_logos_url, shirt_logo_name, IMAGES_LOCATION)
         save_image_data(team_badges_url, f'{team_code}.webp', IMAGES_LOCATION)        
 
-with open(f'{local_dir}/metadata.pickle', 'rb') as handle:
+with open(f'{LOCAL_DIR}/metadata.pickle', 'rb') as handle:
     all_data = pickle.load(handle)    
 
 # Mapping
@@ -262,10 +262,10 @@ player_map['player_name'] = [f'{x} ({y})' for x, y in zip(player_map['web_name']
 # -------------------------------
 
 # Load team positions
-team_df = pd.read_csv("team_positions_history.csv", index_col=0)
+team_df = pd.read_csv(f"{LOCAL_DIR}/team_positions_history.csv", index_col=0)
 
 # Load player history
-player_df = pd.read_csv("player_history.csv", index_col=0)
+player_df = pd.read_csv(f"{LOCAL_DIR}/player_history.csv", index_col=0)
 player_df = pd.merge(player_df, player_map, left_on=["element"], right_index=True, how="left")
 
 user_map = {
