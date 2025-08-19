@@ -9,16 +9,14 @@ import requests
 import plotly.express as px
 import pickle
 
-# For html output use:
-# jupyter nbconvert --execute --no-input --no-prompt --to html FPLDraft.ipynb
-
 # league id found by going to the end point: https://draft.premierleague.com/api/bootstrap-dynamic
-league_id = 43259
+league_id = 8918
 url_all = 'https://draft.premierleague.com/api/bootstrap-static'
 LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
-max_gameweek = 38
+# LOCAL_DIR = "."
 
 refresh_core_data = False
+refresh_latest_data = False
 
 IMAGES_LOCATION = 'assets\\'
 
@@ -26,6 +24,21 @@ colour_grey_black = "#363434"
 colour_white = "white"
 colour_black = "#121212"
 transparent = "rgba(0, 0, 0, 0)"
+
+USER_MAP = {
+    77347:'Salmon',
+    71339:'Mitesh',
+    36507:'Phil',
+    102583:'Marcus',
+    136961:'TomH',
+    37121:'Kieran',
+    109666:'Dan',
+    108014:'Bipin',
+    137447:'Rich',
+}
+
+user_ids = list(USER_MAP.keys())
+user_names = [USER_MAP[user_id] for user_id in user_ids]
 
 
 def discrete_background_color_bins(df, n_bins=5, columns='all', scale='Blues'):
@@ -223,6 +236,9 @@ if refresh_core_data:
 with open(f'{LOCAL_DIR}/metadata.pickle', 'rb') as handle:
     all_data = pickle.load(handle)    
 
+next_gameweek = all_data['events']['next']
+gameweeks = np.arange(next_gameweek)#[1:]
+
 # Mapping
 # Teams
 team_map = pd.DataFrame({i['id']: [i['short_name'], 
@@ -231,7 +247,6 @@ team_map = pd.DataFrame({i['id']: [i['short_name'],
                         for i in all_data['teams']}).T
 team_map.columns = ['team_short_name', 'team_name', 'team_code']
 
-# Players
 player_map = pd.DataFrame({i['id']: ['{} {}'.format(i['first_name'],i['second_name']), 
                                      i['web_name'],
                                      i['code'],
@@ -239,6 +254,7 @@ player_map = pd.DataFrame({i['id']: ['{} {}'.format(i['first_name'],i['second_na
                                      i['element_type']]  
                           for i in all_data['elements']}).T
 player_map.columns = ['full_name', 'web_name', 'player_code', 'team_id', 'position_id']
+all_players = player_map.index.tolist()
 
 
 positions_map = pd.Series({i['id']:i['plural_name_short'] 
@@ -248,7 +264,7 @@ positions_map = pd.Series({i['id']:i['plural_name_short']
 player_map = pd.merge(player_map, 
                       positions_map,
                       left_on=['position_id'],
-                      right_index=True)
+                      right_index=True).rename(columns={'position_y': 'position'})
 
 player_map = pd.merge(player_map, 
                       team_map,
@@ -257,32 +273,58 @@ player_map = pd.merge(player_map,
 
 player_map['player_name'] = [f'{x} ({y})' for x, y in zip(player_map['web_name'], player_map['team_short_name'])]
 
+if refresh_latest_data:
+    url_league = 'https://draft.premierleague.com/api/league/{}/details'.format(league_id)
+    r = requests.get(url_league)
+    league_data = r.json()
+    with open(f'{LOCAL_DIR}/league_data.pickle', 'wb') as handle:
+        pickle.dump(league_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    player_history = []
+    for player in all_players:
+        url_player = 'https://draft.premierleague.com/api/element-summary/{}'.format(player)
+        r = requests.get(url_player)
+        
+        if r.status_code == 502:
+            continue
+        player_data_json = r.json()['history']   
+        data_length = len(player_data_json)
+        for i in np.arange(data_length):
+            player_history = player_history + [pd.Series(player_data_json[i])]
+    player_history = pd.concat(player_history,axis=1).T.rename(columns={'event':'gameweek'})        
+    player_history.to_pickle('player_history.pickle')    
+
+    team_positions_history = []
+    for user_id in user_ids:
+        for gameweek in gameweeks:
+            url_team = 'https://draft.premierleague.com/api/entry/{}/event/{}'.format(user_id, gameweek)
+            r = requests.get(url_team)
+            
+            team_data_json = r.json()
+            team_positions = pd.Series({team_data_json['picks'][i]['position']:team_data_json['picks'][i]['element'] for i in np.arange(len(team_data_json['picks']))})
+            team_positions['user_id'] = user_id
+            team_positions['gameweek'] = gameweek
+                                
+            team_positions_history = team_positions_history + [team_positions]
+    team_positions_history = pd.concat(team_positions_history,axis=1).T
+    team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
+    team_positions_history.to_pickle('team_positions_history.pickle')
+
+
+with open(f'{LOCAL_DIR}/league_data.pickle', 'rb') as handle:
+    league_data = pickle.load(handle)    
+
+with open(f'{LOCAL_DIR}/player_history.pickle', 'rb') as handle:
+    player_df = pickle.load(handle)    
+
+with open(f'{LOCAL_DIR}/team_positions_history.pickle', 'rb') as handle:
+    team_df = pickle.load(handle)    
+
+
 # -------------------------------
 # 📦 Load and Prepare the Data
 # -------------------------------
-
-# Load team positions
-team_df = pd.read_csv(f"{LOCAL_DIR}/team_positions_history.csv", index_col=0)
-
-# Load player history
-player_df = pd.read_csv(f"{LOCAL_DIR}/player_history.csv", index_col=0)
-player_df = pd.merge(player_df, player_map, left_on=["element"], right_index=True, how="left")
-
-user_map = {
-    162095:'Salmon',
-    266672:'Mitesh',
-    162019:'Phil',
-    206655:'Marcus',
-    281930:'TomH',
-    165434:'Kieran',
-    277102:'Dan',
-    278897:'Bipin',
-}
-
-user_ids = list(user_map.keys())
-user_names = [user_map[user_id] for user_id in user_ids]
-
-team_df['user_name'] = team_df['user_id'].map(user_map)
+team_df['user_name'] = team_df['user_id'].map(USER_MAP)
 team_df.rename(columns={"user_name": "User", 
                         "gameweek": "Gameweek", 
                         "position": "Position", 
@@ -292,9 +334,18 @@ player_df.rename(columns={"element": "PlayerID",
                           "gameweek": "Gameweek", 
                           "web_name": "name"}, inplace=True)
 
+player_map.rename(columns={"web_name": "name"}, inplace=True)
+
+
 # Merge datasets
 merged_df = pd.merge(team_df, player_df, on=["PlayerID", "Gameweek"], how="left")
+merged_df = pd.merge(merged_df, player_map, left_on=["PlayerID"], right_index=True, how="left")
 merged_df.sort_values(by=["User", "Gameweek", "Position"], inplace=True)
+merged_df = pd.DataFrame(merged_df.to_dict())
+
+temp_merged_df = merged_df.copy()
+temp_merged_df['Gameweek'] = 0
+merged_df = pd.concat([temp_merged_df, merged_df])
 
 # -------------------------------
 # 🚀 Initialize Dash App
@@ -540,10 +591,10 @@ def render_stats_subtab(active_tab):
 )
 def update_standings_view(view_mode):
     standings_df = merged_df.groupby(["User", "Gameweek"])["total_points"].sum().reset_index()
-    standings_df["Cumulative Points"] = standings_df.groupby("User")["total_points"].cumsum()
-
     standings_df = (
-        standings_df.pivot(index="Gameweek", columns="User", values="Cumulative Points").fillna(0)
+        standings_df.pivot(index="Gameweek", columns="User", values="total_points").fillna(0)
+        .sort_index()
+        .cumsum()
         .sort_index(ascending=False)
         .rank(1, ascending=False, method='min')
         .astype(int)
@@ -578,13 +629,17 @@ def update_pitch(user, gw):
     starters = df[df["Position"] <= 11].copy()
     subs = df[df["Position"] > 11].copy()
 
+    pitch_width = 100
+    pitch_length = 100
+    pitch_sub_length = -20
+
     def assign_coordinates(df):
         layout = {}
         lines = {
-            "GKP": (10, 1),
-            "DEF": (27, 5),
-            "MID": (45, 5),
-            "FWD": (63, 3)
+            "GKP": (pitch_length / 10, 1),
+            "DEF": (3.5 * pitch_length / 10, 5),
+            "MID": (6.2 * pitch_length / 10, 5),
+            "FWD": (8.7 * pitch_length / 10, 3)
         }
 
         for role, (y, default_count) in lines.items():
@@ -593,9 +648,10 @@ def update_pitch(user, gw):
             if count == 0:
                 []
             elif count == 1:
-                xs = [50]
-            else: 
-                xs = list(np.linspace(20, 80, count))            
+                xs = [pitch_width/2]
+            else:
+                margin = pitch_width / 5 
+                xs = list(np.linspace(margin, pitch_width - margin, count))            
 
             for i, (idx, row) in enumerate(players.iterrows()):
                 layout[idx] = (xs[i], y)
@@ -605,21 +661,22 @@ def update_pitch(user, gw):
     starters["x"] = starters.index.map(lambda i: starter_coords[i][0])
     starters["y"] = starters.index.map(lambda i: starter_coords[i][1])
 
-    subs["x"] = [20, 40, 60, 80][:len(subs)]
-    subs["y"] = [-8] * len(subs)
+    sub_margin = pitch_width / 5
+    subs["x"] = [sub_margin, 2 * sub_margin, 3 * sub_margin, 4 * sub_margin]
+    subs["y"] = [pitch_sub_length / 2] * len(subs)
 
     # Pitch background stripes
     pitch_shapes = []
-    for i in range(0, 70, 10):
+    for i in range(0, pitch_length, 10):
         color = "#228B22" if (i // 10) % 2 == 0 else "#32CD32"
-        pitch_shapes.append(dict(type="rect", x0=0, x1=100, y0=i, y1=i+10, fillcolor=color, line=dict(width=0), layer="below"))
+        pitch_shapes.append(dict(type="rect", x0=0, x1=pitch_width, y0=i, y1=i+10, fillcolor=color, line=dict(width=0), layer="below"))
 
     # Pitch markings
     pitch_shapes += [
-        dict(type="line", x0=0, x1=100, y0=65, y1=65, line=dict(color=colour_white, width=2)),  # halfway
-        dict(type="circle", x0=40, x1=60, y0=55, y1=80, line=dict(color=colour_white, width=2)),  # center circle
-        dict(type="rect", x0=30, x1=70, y0=0, y1=15, line=dict(color=colour_white, width=2)),  # penalty box
-        dict(type="rect", x0=40, x1=60, y0=0, y1=5, line=dict(color=colour_white, width=2)),  # goal area
+        dict(type="line", x0=0, x1=pitch_width, y0=(95*pitch_length/100), y1=(95*pitch_length/100), line=dict(color=colour_white, width=2)),  # halfway
+        dict(type="circle", x0=4*pitch_width/10, x1=6*pitch_width/10, y0=(85*pitch_length/100), y1=(110*pitch_length/100), line=dict(color=colour_white, width=2)),  # center circle
+        dict(type="rect", x0=3*pitch_width/10, x1=7*pitch_width/10, y0=0, y1=20*pitch_length/100, line=dict(color=colour_white, width=2)),  # penalty box
+        dict(type="rect", x0=4*pitch_width/10, x1=6*pitch_width/10, y0=0, y1=10*pitch_length/100, line=dict(color=colour_white, width=2)),  # goal area
     ]
 
     # Image annotations
@@ -627,9 +684,9 @@ def update_pitch(user, gw):
     for _, row in pd.concat([starters, subs]).iterrows():
         images.append(dict(
             source=get_shirt_image(row["team_code"]),
-            x=row["x"]-2, y=row["y"] - 2,
+            x=row["x"]-3, y=row["y"] - 2,
             xref="x", yref="y",
-            sizex=7, sizey=7,
+            sizex=10, sizey=10,
             xanchor="left", yanchor="bottom",
             layer="above"
         ))
@@ -638,8 +695,8 @@ def update_pitch(user, gw):
     texts = []
     for _, row in pd.concat([starters, subs]).iterrows():
         label = f"<b>{row['name']}</b><br><b>{row['total_points']}</b>"
-        texts.append(dict(x=row["x"], y=row["y"]-5.5, text=label, showarrow=False,
-                          font=dict(size=9, color=colour_white), bgcolor='#175717', align="center"))
+        texts.append(dict(x=row["x"], y=row["y"]-6.0, text=label, showarrow=False,
+                          font=dict(size=10, color=colour_white), bgcolor='#175717', align="center"))
 
     # Build figure
     fig = go.Figure()
@@ -647,13 +704,13 @@ def update_pitch(user, gw):
         shapes=pitch_shapes,
         images=images,
         annotations=texts,
-        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(range=[-18, 70], showgrid=False, zeroline=False, visible=False),
+        xaxis=dict(range=[0, pitch_width], showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(range=[pitch_sub_length, pitch_length], showgrid=False, zeroline=False, visible=False),
         plot_bgcolor=colour_grey_black, 
         paper_bgcolor=transparent,    
         font=dict(color=colour_white),
-        margin=dict(t=20, b=20, l=20, r=20),
-        height=470
+        margin=dict(t=pitch_length/10, b=pitch_length/10, l=pitch_width/10, r=pitch_width/10),
+        height=550
     )
 
     # Summary stats
@@ -673,9 +730,9 @@ def update_pitch(user, gw):
 def get_player_usage_data(df, filter_type):
     if filter_type == "all":
         agg = df.groupby("User")["PlayerID"].nunique()
-        title = "Total Unique Starters Used"
+        title = "Total Unique Players Used"
     elif filter_type in ("GKP", "DEF", "MID", "FWD"):
-        agg = df[df.position == filter_type].groupby("User")["PlayerID"].nunique()
+        agg = df[(df.position == filter_type) & (df.Position <= 11)].groupby("User")["PlayerID"].nunique()
         title = f"Total Unique {filter_type}s Used"
     else:
         agg = df[df.Position <= 11].groupby("User")["PlayerID"].nunique()
