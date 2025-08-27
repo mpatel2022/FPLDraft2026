@@ -237,7 +237,7 @@ with open(f'{LOCAL_DIR}/metadata.pickle', 'rb') as handle:
     all_data = pickle.load(handle)    
 
 next_gameweek = all_data['events']['next']
-gameweeks = np.arange(next_gameweek)#[1:]
+gameweeks = np.arange(next_gameweek)[1:]
 
 # Mapping
 # Teams
@@ -294,9 +294,9 @@ if refresh_latest_data:
     player_history = pd.concat(player_history,axis=1).T.rename(columns={'event':'gameweek'})        
     player_history.to_pickle('player_history.pickle')    
 
-    team_positions_history = []
-    for user_id in user_ids:
-        for gameweek in gameweeks:
+    for gameweek in gameweeks:    
+        team_positions_array = []
+        for user_id in user_ids:
             url_team = 'https://draft.premierleague.com/api/entry/{}/event/{}'.format(user_id, gameweek)
             r = requests.get(url_team)
             
@@ -305,10 +305,10 @@ if refresh_latest_data:
             team_positions['user_id'] = user_id
             team_positions['gameweek'] = gameweek
                                 
-            team_positions_history = team_positions_history + [team_positions]
-    team_positions_history = pd.concat(team_positions_history,axis=1).T
-    team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
-    team_positions_history.to_pickle('team_positions_history.pickle')
+            team_positions_array.append(team_positions)
+        team_positions_history = pd.concat(team_positions_array,axis=1).T
+        team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
+        team_positions_history.to_pickle(f'team_positions_history_gw{gameweek}.pickle')
 
 
 with open(f'{LOCAL_DIR}/league_data.pickle', 'rb') as handle:
@@ -317,9 +317,13 @@ with open(f'{LOCAL_DIR}/league_data.pickle', 'rb') as handle:
 with open(f'{LOCAL_DIR}/player_history.pickle', 'rb') as handle:
     player_df = pickle.load(handle)    
 
-with open(f'{LOCAL_DIR}/team_positions_history.pickle', 'rb') as handle:
-    team_df = pickle.load(handle)    
+team_array = []
+for gameweek in gameweeks:
+    with open(f'{LOCAL_DIR}/team_positions_history_gw{gameweek}.pickle', 'rb') as handle:
+        team_array.append(pickle.load(handle))    
 
+team_df = pd.concat(team_array)
+team_df = team_df.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
 
 # -------------------------------
 # 📦 Load and Prepare the Data
@@ -342,10 +346,6 @@ merged_df = pd.merge(team_df, player_df, on=["PlayerID", "Gameweek"], how="left"
 merged_df = pd.merge(merged_df, player_map, left_on=["PlayerID"], right_index=True, how="left")
 merged_df.sort_values(by=["User", "Gameweek", "Position"], inplace=True)
 merged_df = pd.DataFrame(merged_df.to_dict())
-
-temp_merged_df = merged_df.copy()
-temp_merged_df['Gameweek'] = 0
-merged_df = pd.concat([temp_merged_df, merged_df])
 
 # -------------------------------
 # 🚀 Initialize Dash App
@@ -650,7 +650,7 @@ def update_pitch(user, gw):
             elif count == 1:
                 xs = [pitch_width/2]
             else:
-                margin = pitch_width / 5 
+                margin = pitch_width / default_count 
                 xs = list(np.linspace(margin, pitch_width - margin, count))            
 
             for i, (idx, row) in enumerate(players.iterrows()):
