@@ -34,7 +34,7 @@ USER_MAP = {
     37121:'Kieran',
     109666:'Dan',
     108014:'Bipin',
-    137447:'Rich',
+    137445:'Rich',
 }
 
 user_ids = list(USER_MAP.keys())
@@ -294,21 +294,23 @@ if refresh_latest_data:
     player_history = pd.concat(player_history,axis=1).T.rename(columns={'event':'gameweek'})        
     player_history.to_pickle('player_history.pickle')    
 
-    for gameweek in gameweeks:    
-        team_positions_array = []
-        for user_id in user_ids:
-            url_team = 'https://draft.premierleague.com/api/entry/{}/event/{}'.format(user_id, gameweek)
-            r = requests.get(url_team)
-            
-            team_data_json = r.json()
-            team_positions = pd.Series({team_data_json['picks'][i]['position']:team_data_json['picks'][i]['element'] for i in np.arange(len(team_data_json['picks']))})
-            team_positions['user_id'] = user_id
-            team_positions['gameweek'] = gameweek
-                                
-            team_positions_array.append(team_positions)
-        team_positions_history = pd.concat(team_positions_array,axis=1).T
-        team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
-        team_positions_history.to_pickle(f'team_positions_history_gw{gameweek}.pickle')
+    for gameweek in gameweeks:
+        filename = f'team_positions_history_gw{gameweek}.pickle'
+        if not os.path.exists(filename):
+            team_positions_array = []
+            for user_id in user_ids:
+                url_team = 'https://draft.premierleague.com/api/entry/{}/event/{}'.format(user_id, gameweek)
+                r = requests.get(url_team)
+                
+                team_data_json = r.json()
+                team_positions = pd.Series({team_data_json['picks'][i]['position']:team_data_json['picks'][i]['element'] for i in np.arange(len(team_data_json['picks']))})
+                team_positions['user_id'] = user_id
+                team_positions['gameweek'] = gameweek
+                                    
+                team_positions_array.append(team_positions)
+            team_positions_history = pd.concat(team_positions_array,axis=1).T
+            team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
+            team_positions_history.to_pickle(f'team_positions_history_gw{gameweek}.pickle')
 
 
 with open(f'{LOCAL_DIR}/league_data.pickle', 'rb') as handle:
@@ -323,7 +325,7 @@ for gameweek in gameweeks:
         team_array.append(pickle.load(handle))    
 
 team_df = pd.concat(team_array)
-team_df = team_df.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
+
 
 # -------------------------------
 # 📦 Load and Prepare the Data
@@ -575,7 +577,7 @@ def render_stats_subtab(active_tab):
                                     {'label': 'FWD', 'value': 'FWD'},                                                
                                     {'label': 'All Players', 'value': 'all'}
                                 ],
-                                value='all',
+                                value='starters',
                                 clearable=False,
                                 style={"width": "300px", "marginTop": "5px"}
                             ),
@@ -590,7 +592,7 @@ def render_stats_subtab(active_tab):
     Input("standings-toggle", "value")
 )
 def update_standings_view(view_mode):
-    standings_df = merged_df.groupby(["User", "Gameweek"])["total_points"].sum().reset_index()
+    standings_df = merged_df[merged_df['Position'] <= 11].groupby(["User", "Gameweek"])["total_points"].sum().reset_index()
     standings_df = (
         standings_df.pivot(index="Gameweek", columns="User", values="total_points").fillna(0)
         .sort_index()
