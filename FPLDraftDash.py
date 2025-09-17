@@ -13,8 +13,8 @@ import os
 # league id found by going to the end point: https://draft.premierleague.com/api/bootstrap-dynamic
 league_id = 8918
 url_all = 'https://draft.premierleague.com/api/bootstrap-static'
-LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
-# LOCAL_DIR = "."
+# LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
+LOCAL_DIR = "."
 
 refresh_core_data = False
 refresh_latest_data = False
