@@ -275,6 +275,20 @@ player_map = pd.merge(player_map,
 player_map['player_name'] = [f'{x} ({y})' for x, y in zip(player_map['web_name'], player_map['team_short_name'])]
 
 if refresh_latest_data:
+    player_history = []
+    for player in all_players:
+        url_player = 'https://draft.premierleague.com/api/element-summary/{}'.format(player)
+        r = requests.get(url_player)
+        
+        if r.status_code == 502:
+            continue
+        player_data_json = r.json()['history']   
+        data_length = len(player_data_json)
+        for i in np.arange(data_length):
+            player_history = player_history + [pd.Series(player_data_json[i])]
+    player_history = pd.concat(player_history,axis=1).T.rename(columns={'event':'gameweek'})        
+    player_history.to_pickle('player_history.pickle')    
+
     url_league = 'https://draft.premierleague.com/api/league/{}/details'.format(league_id)
     r = requests.get(url_league)
     league_data = r.json()
@@ -298,21 +312,6 @@ if refresh_latest_data:
             team_positions_history = pd.concat(team_positions_array,axis=1).T
             team_positions_history = team_positions_history.set_index(['user_id','gameweek']).stack().reset_index().rename(columns={'level_2':'position',0:'element'})
             team_positions_history.to_pickle(f'team_positions_history_gw{gameweek}.pickle')
-
-
-    player_history = []
-    for player in all_players:
-        url_player = 'https://draft.premierleague.com/api/element-summary/{}'.format(player)
-        r = requests.get(url_player)
-        
-        if r.status_code == 502:
-            continue
-        player_data_json = r.json()['history']   
-        data_length = len(player_data_json)
-        for i in np.arange(data_length):
-            player_history = player_history + [pd.Series(player_data_json[i])]
-    player_history = pd.concat(player_history,axis=1).T.rename(columns={'event':'gameweek'})        
-    player_history.to_pickle('player_history.pickle')    
 
 
 with open(f'{LOCAL_DIR}/league_data.pickle', 'rb') as handle:
