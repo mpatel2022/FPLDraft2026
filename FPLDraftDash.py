@@ -16,8 +16,7 @@ url_all = 'https://draft.premierleague.com/api/bootstrap-static'
 LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
 # LOCAL_DIR = "."
 
-refresh_core_data = False
-refresh_latest_data = False
+refresh_data = False
 
 IMAGES_LOCATION = 'assets\\'
 
@@ -217,7 +216,7 @@ def get_aggregate_data_based_on_filter(merged_df, filter_type):
     return agg, title    
 
 
-if refresh_core_data:
+if refresh_data:
     r = requests.get(url_all)
     all_data = r.json()
 
@@ -274,7 +273,7 @@ player_map = pd.merge(player_map,
 
 player_map['player_name'] = [f'{x} ({y})' for x, y in zip(player_map['web_name'], player_map['team_short_name'])]
 
-if refresh_latest_data:
+if refresh_data:
     player_history = []
     for player in all_players:
         url_player = 'https://draft.premierleague.com/api/element-summary/{}'.format(player)
