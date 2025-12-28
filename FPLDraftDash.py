@@ -40,6 +40,17 @@ USER_MAP = {
 user_ids = list(USER_MAP.keys())
 user_names = [USER_MAP[user_id] for user_id in user_ids]
 
+TRAITOR_TEAMS = {
+    'Mitesh':'MCI',
+    'Marcus':'MUN',
+    'Kieran':'ARS',
+    'Dan':'LIV',
+    'Salmon':'TOT',
+    'Bipin':'FUL',
+    'Phil':'None',
+    'TomH':'LIV',
+    'Rich':'ARS'
+}
 
 def discrete_background_color_bins(df, n_bins=5, columns='all', scale='Blues'):
     import colorlover
@@ -194,25 +205,48 @@ def get_ranked_table_with_colours(standings_df):
     return table 
 
 
+def get_sol_campbell_award_plot(merged_df):
+    sol_campbell_performance = {}
 
-def get_aggregate_data_based_on_filter(merged_df, filter_type):
+    for user_id in user_ids:
+        user_name = USER_MAP[user_id]
+        sol_campbell_performance_temp = (merged_df[(merged_df["Position"] <= 11) 
+                                                   & (merged_df['user_id'] == user_id)
+                                                   & (merged_df['team_short_name'] == TRAITOR_TEAMS.get(user_name))])                                
+        if len(sol_campbell_performance_temp) > 0:
+            sol_campbell_performance[user_name] = sol_campbell_performance_temp.groupby(['Gameweek'])['total_points'].sum()
+
+    sol_campbell_performance = pd.DataFrame(sol_campbell_performance)
+
+    fig = px.line(sol_campbell_performance.replace(np.nan, 0).cumsum().fillna(method='ffill'), 
+                  labels={'variable':'','value':'Total points'})
+    fig.update_layout(
+        plot_bgcolor=transparent, 
+        paper_bgcolor=transparent,
+        font=dict(color=colour_white),
+        margin=dict(t=40, b=20, l=20, r=20)
+    )    
+    return fig
+
+
+def get_aggregate_data_based_on_filter(merged_df, filter_type, column_name):
     starters_selection = merged_df["Position"] <= 11
     starters = merged_df[starters_selection]   
     if filter_type == 'all':
-        agg = starters.groupby(['User', 'Gameweek'])['total_points'].sum().reset_index()
-        title = "Total Points"
+        agg = starters.groupby(['User', 'Gameweek'])[column_name].sum().reset_index()
+        title = column_name.replace("_", " ").capitalize()
     elif filter_type == 'bonus':
         agg = starters.groupby(['User', 'Gameweek'])['bonus'].sum().reset_index()
         title = "Bonus Points Only"
-        agg.columns = ['total_points']
+        agg.columns = [column_name]
     elif filter_type == 'subs':
-        agg = merged_df[~starters_selection].groupby(['User', 'Gameweek'])['total_points'].sum().reset_index()
+        agg = merged_df[~starters_selection].groupby(['User', 'Gameweek'])[column_name].sum().reset_index()
         title = "Subs Only"        
     elif filter_type in ['GKP', 'DEF', 'MID', 'FWD']:
         filtered = starters[starters['position'] == filter_type]
-        title = f"Total Points - {filter_type}"
-        agg = filtered.groupby(['User', 'Gameweek'])['total_points'].sum().reset_index()
-    agg = agg.pivot(index='Gameweek', columns='User', values='total_points')
+        title = f"{column_name.replace("_", " ").capitalize()} - {filter_type}"
+        agg = filtered.groupby(['User', 'Gameweek'])[column_name].sum().reset_index()
+    agg = agg.pivot(index='Gameweek', columns='User', values=column_name)
     return agg, title    
 
 
@@ -348,6 +382,8 @@ merged_df = pd.merge(team_df, player_df, on=["PlayerID", "Gameweek"], how="left"
 merged_df = pd.merge(merged_df, player_map, left_on=["PlayerID"], right_index=True, how="left")
 merged_df.sort_values(by=["User", "Gameweek", "Position"], inplace=True)
 merged_df = pd.DataFrame(merged_df.to_dict())
+
+merged_df['defensive_contribution_points'] = [2 if i >= 10 else 0 for i in merged_df['defensive_contribution']]
 
 # -------------------------------
 # 🚀 Initialize Dash App
@@ -561,7 +597,12 @@ def render_stats_subtab(active_tab):
                     ),
                     html.Div(id="rolling-performance-content")
                 ]),
-                html.Br(),                
+                html.Br(),
+                html.Div([
+                    html.H5("The Sol Campbell Award", style={"marginTop": "20px"}),
+                    html.Div([dcc.Graph(figure=get_sol_campbell_award_plot(merged_df))], className="graph-container")
+                ]),
+                html.Br(),                                
             ])
     elif active_tab == "squad-tab":
         return html.Div([
@@ -582,6 +623,124 @@ def render_stats_subtab(active_tab):
                                 style={"width": "300px", "marginTop": "5px"}
                             ),
                     html.Div(id="n-players-used-content"),
+                    html.Br(),
+                    html.Div([
+                        html.H5("Goals", style={"marginTop": "20px"}),
+                        dcc.Dropdown(
+                            id='squad-goals-filter',
+                            options=[
+                                {'label': 'All', 'value': 'all'},
+                                {'label': 'DEF', 'value': 'DEF'},                        
+                                {'label': 'MID', 'value': 'MID'},
+                                {'label': 'FWD', 'value': 'FWD'}
+                            ],
+                            value='all',
+                            clearable=False,
+                            style={"width": "300px", "marginTop": "5px"}
+                        ),
+                        dcc.RadioItems(
+                            className="dash-radio-items",
+                            id="squad-goals-toggle",
+                            options=[
+                                {"label": "Chart", "value": "chart"},
+                                {"label": "Table", "value": "table"}
+                            ],
+                            value="chart",
+                            labelStyle={"display": "inline-block", "marginRight": "10px", "marginTop": "5px"},
+                            style={"marginTop": "5px"},
+                        ),
+                        html.Br(),
+                        html.Div(id="squad-goals-content")
+                    ]),
+                    html.Br(),
+                    html.Div([
+                        html.H5("Assits", style={"marginTop": "20px"}),
+                        dcc.Dropdown(
+                            id='squad-assists-filter',
+                            options=[
+                                {'label': 'All', 'value': 'all'},
+                                {'label': 'GKP', 'value': 'GKP'},
+                                {'label': 'DEF', 'value': 'DEF'},                        
+                                {'label': 'MID', 'value': 'MID'},
+                                {'label': 'FWD', 'value': 'FWD'}
+                            ],
+                            value='all',
+                            clearable=False,
+                            style={"width": "300px", "marginTop": "5px"}
+                        ),
+                        dcc.RadioItems(
+                            className="dash-radio-items",
+                            id="squad-assists-toggle",
+                            options=[
+                                {"label": "Chart", "value": "chart"},
+                                {"label": "Table", "value": "table"}
+                            ],
+                            value="chart",
+                            labelStyle={"display": "inline-block", "marginRight": "10px", "marginTop": "5px"},
+                            style={"marginTop": "5px"},
+                        ),
+                        html.Br(),
+                        html.Div(id="squad-assists-content")
+                    ]),
+                    html.Br(),
+                    html.Div([
+                        html.H5("Clean Sheets", style={"marginTop": "20px"}),
+                        dcc.Dropdown(
+                            id='squad-clean-sheets-filter',
+                            options=[
+                                {'label': 'All', 'value': 'all'},
+                                {'label': 'GKP', 'value': 'GKP'},
+                                {'label': 'DEF', 'value': 'DEF'},                        
+                                {'label': 'MID', 'value': 'MID'},
+                                {'label': 'FWD', 'value': 'FWD'}
+                            ],
+                            value='all',
+                            clearable=False,
+                            style={"width": "300px", "marginTop": "5px"}
+                        ),
+                        dcc.RadioItems(
+                            className="dash-radio-items",
+                            id="squad-clean-sheets-toggle",
+                            options=[
+                                {"label": "Chart", "value": "chart"},
+                                {"label": "Table", "value": "table"}
+                            ],
+                            value="chart",
+                            labelStyle={"display": "inline-block", "marginRight": "10px", "marginTop": "5px"},
+                            style={"marginTop": "5px"},
+                        ),
+                        html.Br(),
+                        html.Div(id="squad-clean-sheets-content")
+                    ]),
+                    html.Br(),
+                    html.Div([
+                        html.H5("Defensive Contributions", style={"marginTop": "20px"}),
+                        dcc.Dropdown(
+                            id='squad-defensive-contribution-filter',
+                            options=[
+                                {'label': 'All', 'value': 'all'},
+                                {'label': 'DEF', 'value': 'DEF'},                        
+                                {'label': 'MID', 'value': 'MID'},
+                                {'label': 'FWD', 'value': 'FWD'}
+                            ],
+                            value='all',
+                            clearable=False,
+                            style={"width": "300px", "marginTop": "5px"}
+                        ),
+                        dcc.RadioItems(
+                            className="dash-radio-items",
+                            id="squad-defensive-contribution-toggle",
+                            options=[
+                                {"label": "Chart", "value": "chart"},
+                                {"label": "Table", "value": "table"}
+                            ],
+                            value="chart",
+                            labelStyle={"display": "inline-block", "marginRight": "10px", "marginTop": "5px"},
+                            style={"marginTop": "5px"},
+                        ),
+                        html.Br(),
+                        html.Div(id="squad-defensive-contribution-content")
+                    ]),
                     html.Br(),
             ])
         ])
@@ -770,7 +929,7 @@ def update_n_players_used_graph(filter_type):
      Input("performance-toggle", "value")]
 )
 def update_performance_graph(filter_type, view_mode):
-    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type)
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, column_name='total_points')
     if view_mode == "chart":
         fig = px.line(agg, markers=True)
 
@@ -793,7 +952,7 @@ def update_performance_graph(filter_type, view_mode):
     Input('rolling-performance-filter', 'value')
 )
 def update_rolling_performance_graph(n_weeks):
-    agg, title = get_aggregate_data_based_on_filter(merged_df, 'all')
+    agg, title = get_aggregate_data_based_on_filter(merged_df, 'all', 'total_points')
     agg = agg.rolling(window=n_weeks, min_periods=1).sum()
     fig = px.line(agg, markers=True)
     fig.update_layout(
@@ -812,7 +971,7 @@ def update_rolling_performance_graph(n_weeks):
     Input('performance-spread-toggle', 'value')
 )
 def update_performance_spread_graph(view_mode):
-    agg, title = get_aggregate_data_based_on_filter(merged_df, 'all')
+    agg, title = get_aggregate_data_based_on_filter(merged_df, 'all', 'total_points')
     
     if view_mode == 'mean':
         player_points = agg.mean(0).to_frame()
@@ -848,7 +1007,7 @@ def update_performance_spread_graph(view_mode):
      Input("cumulative-performance-toggle", "value")]
 )
 def update_cumulative_performance_graph(filter_type, view_mode):
-    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type)
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'total_points')
     agg = agg.cumsum()
     if view_mode == "chart":
         fig = px.line(agg, markers=True)
@@ -857,6 +1016,110 @@ def update_cumulative_performance_graph(filter_type, view_mode):
             title=title,
             xaxis_title="Gameweek",
             yaxis_title="Cumulative Points",
+            plot_bgcolor=transparent, 
+            paper_bgcolor=transparent,
+            font=dict(color=colour_white),
+        )
+        return html.Div([dcc.Graph(figure=fig)], className="graph-container")
+
+    else:  # table view
+        table = get_ranked_table_with_colours(agg.sort_index(ascending=False).rank(1, ascending=False, method='min'))
+        return table
+
+
+@app.callback(
+    Output('squad-goals-content', 'children'),
+    [Input('squad-goals-filter', 'value'),
+     Input("squad-goals-toggle", "value")]
+)
+def update_squad_goals_graph(filter_type, view_mode):
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'goals_scored')
+    agg = agg.cumsum()
+    if view_mode == "chart":
+        fig = px.line(agg, markers=True)
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Gameweek",
+            yaxis_title="Goals",
+            plot_bgcolor=transparent, 
+            paper_bgcolor=transparent,
+            font=dict(color=colour_white),
+        )
+        return html.Div([dcc.Graph(figure=fig)], className="graph-container")
+
+    else:  # table view
+        table = get_ranked_table_with_colours(agg.sort_index(ascending=False).rank(1, ascending=False, method='min'))
+        return table
+
+
+@app.callback(
+    Output('squad-assists-content', 'children'),
+    [Input('squad-assists-filter', 'value'),
+     Input("squad-assists-toggle", "value")]
+)
+def update_squad_assists_graph(filter_type, view_mode):
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'assists')
+    agg = agg.cumsum()
+    if view_mode == "chart":
+        fig = px.line(agg, markers=True)
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Gameweek",
+            yaxis_title="Assists",
+            plot_bgcolor=transparent, 
+            paper_bgcolor=transparent,
+            font=dict(color=colour_white),
+        )
+        return html.Div([dcc.Graph(figure=fig)], className="graph-container")
+
+    else:  # table view
+        table = get_ranked_table_with_colours(agg.sort_index(ascending=False).rank(1, ascending=False, method='min'))
+        return table
+
+
+@app.callback(
+    Output('squad-clean-sheets-content', 'children'),
+    [Input('squad-clean-sheets-filter', 'value'),
+     Input("squad-clean-sheets-toggle", "value")]
+)
+def update_squad_clean_sheets_graph(filter_type, view_mode):
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'clean_sheets')
+    agg = agg.cumsum()
+    if view_mode == "chart":
+        fig = px.line(agg, markers=True)
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Gameweek",
+            yaxis_title="Clean Sheets Points",
+            plot_bgcolor=transparent, 
+            paper_bgcolor=transparent,
+            font=dict(color=colour_white),
+        )
+        return html.Div([dcc.Graph(figure=fig)], className="graph-container")
+
+    else:  # table view
+        table = get_ranked_table_with_colours(agg.sort_index(ascending=False).rank(1, ascending=False, method='min'))
+        return table
+
+
+@app.callback(
+    Output('squad-defensive-contribution-content', 'children'),
+    [Input('squad-defensive-contribution-filter', 'value'),
+     Input("squad-defensive-contribution-toggle", "value")]
+)
+def update_squad_defensive_contribution_graph(filter_type, view_mode):
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'defensive_contribution_points')
+    agg = agg.cumsum()
+    if view_mode == "chart":
+        fig = px.line(agg, markers=True)
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Gameweek",
+            yaxis_title="Defensive Contribution Points",
             plot_bgcolor=transparent, 
             paper_bgcolor=transparent,
             font=dict(color=colour_white),
