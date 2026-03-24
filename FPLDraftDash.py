@@ -396,7 +396,7 @@ server = app.server  # for deployment
 
 # Dropdown options
 user_options = sorted(merged_df["User"].unique())
-gameweek_options = sorted(merged_df["Gameweek"].unique(), reverse=True)
+gameweek_options = ['All'] + sorted(merged_df["Gameweek"].unique(), reverse=True)
 
 # -------------------------------
 # 🎨 App Layout
@@ -742,6 +742,35 @@ def render_stats_subtab(active_tab):
                         html.Div(id="squad-defensive-contribution-content")
                     ]),
                     html.Br(),
+                    html.Div([
+                        html.H5("Minutes Played", style={"marginTop": "20px"}),
+                        dcc.Dropdown(
+                            id='squad-minutes-played-filter',
+                            options=[
+                                {'label': 'All', 'value': 'all'},
+                                {'label': 'DEF', 'value': 'DEF'},                        
+                                {'label': 'MID', 'value': 'MID'},
+                                {'label': 'FWD', 'value': 'FWD'}
+                            ],
+                            value='all',
+                            clearable=False,
+                            style={"width": "300px", "marginTop": "5px"}
+                        ),
+                        dcc.RadioItems(
+                            className="dash-radio-items",
+                            id="squad-minutes-played-toggle",
+                            options=[
+                                {"label": "Chart", "value": "chart"},
+                                {"label": "Table", "value": "table"}
+                            ],
+                            value="chart",
+                            labelStyle={"display": "inline-block", "marginRight": "10px", "marginTop": "5px"},
+                            style={"marginTop": "5px"},
+                        ),
+                        html.Br(),
+                        html.Div(id="squad-minutes-played-content")
+                    ]),
+                    html.Br(),
             ])
         ])
 
@@ -783,12 +812,13 @@ def update_standings_view(view_mode):
     [Input("user-dropdown", "value"),
      Input("gameweek-dropdown", "value")]
 )
-def update_pitch(user, gw):
-    gw = gameweek_options[-2] if gw == 'All' else gw
+def update_pitch(user, gw_org):
+    gw = gameweek_options[1] if gw_org == 'All' else gw_org
     df = merged_df[(merged_df["User"] == user) & (merged_df["Gameweek"] == gw)]
+    df['total_points'] = df['total_points'].fillna(0)
 
-    starters = df[df["Position"] <= 11].copy()
-    subs = df[df["Position"] > 11].copy()
+    starters = df[(df["Position"] <= 11)]
+    subs = df[(df["Position"] > 11)]    
 
     pitch_width = 100
     pitch_length = 100
@@ -874,16 +904,26 @@ def update_pitch(user, gw):
         height=550
     )
 
+    stats_df = merged_df[(merged_df["User"] == user)]
+
+    if gw_org != 'All':
+        stats_df = stats_df[stats_df['Gameweek'] == gw]
+
+    stats_starters = stats_df[(stats_df["Position"] <= 11)]
+    stats_subs = stats_df[(stats_df["Position"] > 11)]    
+
     # Summary stats
     summary = html.Ul([
-        html.Li(f"Total Starter Points: {starters['total_points'].sum()}"),
-        html.Li(f"Total Sub Points: {subs['total_points'].sum()}"),
-        html.Li(f"Goals Scored: {df['goals_scored'].sum()}"),
-        html.Li(f"Assists: {df['assists'].sum()}"),
-        html.Li(f"Clean Sheets: {df['clean_sheets'].sum()}")
+        html.Li(f"Total Starter Points: {stats_starters['total_points'].sum()}"),
+        html.Li(f"Total Sub Points: {stats_subs['total_points'].sum()}"),
+        html.Li(f"Bonus: {stats_df['bonus'].sum()}"),
+        html.Li(f"Defensive Contribution: {stats_df['defensive_contribution'].sum()}"),
+        html.Li(f"Goals Scored: {stats_df['goals_scored'].sum()}"),
+        html.Li(f"Assists: {stats_df['assists'].sum()}"),
+        html.Li(f"Clean Sheets: {stats_df['clean_sheets'].sum()}")
     ])
 
-    pie_fig = top_10_player_pie(starters)
+    pie_fig = top_10_player_pie(stats_starters)
 
     return fig, pie_fig, summary
 
@@ -1120,6 +1160,32 @@ def update_squad_defensive_contribution_graph(filter_type, view_mode):
             title=title,
             xaxis_title="Gameweek",
             yaxis_title="Defensive Contribution Points",
+            plot_bgcolor=transparent, 
+            paper_bgcolor=transparent,
+            font=dict(color=colour_white),
+        )
+        return html.Div([dcc.Graph(figure=fig)], className="graph-container")
+
+    else:  # table view
+        table = get_ranked_table_with_colours(agg.sort_index(ascending=False).rank(1, ascending=False, method='min'))
+        return table
+
+
+@app.callback(
+    Output('squad-minutes-played-content-content', 'children'),
+    [Input('squad-minutes-played-filter', 'value'),
+     Input("squad-minutes-played-toggle", "value")]
+)
+def update_squad_minutes_played_graph(filter_type, view_mode):
+    agg, title = get_aggregate_data_based_on_filter(merged_df, filter_type, 'minutes')
+    agg = agg.cumsum()
+    if view_mode == "chart":
+        fig = px.line(agg, markers=True)
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Gameweek",
+            yaxis_title="Minutes Played",
             plot_bgcolor=transparent, 
             paper_bgcolor=transparent,
             font=dict(color=colour_white),
