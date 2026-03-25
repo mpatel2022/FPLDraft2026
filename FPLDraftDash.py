@@ -16,7 +16,7 @@ url_all = 'https://draft.premierleague.com/api/bootstrap-static'
 LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
 # LOCAL_DIR = "."
 
-refresh_data = True
+refresh_data = False
 
 IMAGES_LOCATION = 'assets\\'
 
