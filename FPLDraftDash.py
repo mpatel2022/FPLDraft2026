@@ -917,7 +917,7 @@ def update_pitch(user, gw_org):
         html.Li(f"Total Starter Points: {stats_starters['total_points'].sum()}"),
         html.Li(f"Total Sub Points: {stats_subs['total_points'].sum()}"),
         html.Li(f"Bonus: {stats_starters['bonus'].sum()}"),
-        html.Li(f"Defensive Contribution: {stats_starters['defensive_contribution'].sum()}"),
+        html.Li(f"Defensive Contribution: {stats_starters['defensive_contribution_points'].sum()}"),
         html.Li(f"Goals Scored: {stats_starters['goals_scored'].sum()}"),
         html.Li(f"Assists: {stats_starters['assists'].sum()}"),
         html.Li(f"Clean Sheets: {stats_starters['clean_sheets'].sum()}")
@@ -1172,7 +1172,7 @@ def update_squad_defensive_contribution_graph(filter_type, view_mode):
 
 
 @app.callback(
-    Output('squad-minutes-played-content-content', 'children'),
+    Output('squad-minutes-played-content', 'children'),
     [Input('squad-minutes-played-filter', 'value'),
      Input("squad-minutes-played-toggle", "value")]
 )
