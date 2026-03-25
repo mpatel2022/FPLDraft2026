@@ -16,7 +16,7 @@ url_all = 'https://draft.premierleague.com/api/bootstrap-static'
 LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
 # LOCAL_DIR = "."
 
-refresh_data = False
+refresh_data = True
 
 IMAGES_LOCATION = 'assets\\'
 
@@ -916,11 +916,11 @@ def update_pitch(user, gw_org):
     summary = html.Ul([
         html.Li(f"Total Starter Points: {stats_starters['total_points'].sum()}"),
         html.Li(f"Total Sub Points: {stats_subs['total_points'].sum()}"),
-        html.Li(f"Bonus: {stats_df['bonus'].sum()}"),
-        html.Li(f"Defensive Contribution: {stats_df['defensive_contribution'].sum()}"),
-        html.Li(f"Goals Scored: {stats_df['goals_scored'].sum()}"),
-        html.Li(f"Assists: {stats_df['assists'].sum()}"),
-        html.Li(f"Clean Sheets: {stats_df['clean_sheets'].sum()}")
+        html.Li(f"Bonus: {stats_starters['bonus'].sum()}"),
+        html.Li(f"Defensive Contribution: {stats_starters['defensive_contribution'].sum()}"),
+        html.Li(f"Goals Scored: {stats_starters['goals_scored'].sum()}"),
+        html.Li(f"Assists: {stats_starters['assists'].sum()}"),
+        html.Li(f"Clean Sheets: {stats_starters['clean_sheets'].sum()}")
     ])
 
     pie_fig = top_10_player_pie(stats_starters)
