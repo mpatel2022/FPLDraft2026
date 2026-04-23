@@ -52,6 +52,18 @@ TRAITOR_TEAMS = {
     'Rich':'ARS'
 }
 
+CUP = {
+    'Qualifiers (GW30)': ['Mitesh', 'Marcus', 'Kieran', 'Dan', 
+                   'Salmon', 'Bipin', 'Phil', 'TomH', 'Rich'],
+    'Quarter Finals (GW32)': [('Mitesh', 'Salmon'), 
+                       ('Phil', 'TomH'),
+                       ('Bipin', 'Rich'),
+                       ('Dan', 'Kieran')],
+    'Semi Finals (GW34)': [('Rich', 'Dan'),
+                           ('Salmon', 'TomH')],    
+}
+
+
 def discrete_background_color_bins(df, n_bins=5, columns='all', scale='Blues'):
     import colorlover
     bounds = [i * (1.0 / n_bins) for i in range(n_bins + 1)]
@@ -227,6 +239,162 @@ def get_sol_campbell_award_plot(merged_df):
         margin=dict(t=40, b=20, l=20, r=20)
     )    
     return fig
+
+
+def get_cup_graphic(merged_df, cup_dict):
+    """Generate cup competition graphic with total points and winners"""
+    
+    # Get current gameweek (next_gameweek - 1)
+    current_gw = next_gameweek - 1
+    
+    # Helper function to extract gameweek from stage name (e.g., "Qualifiers (GW30)" -> 30)
+    def extract_gameweek(stage_name):
+        import re
+        match = re.search(r'GW(\d+)', stage_name)
+        return int(match.group(1)) if match else None
+    
+    # Helper function to get points for a user in a specific gameweek
+    def get_points_for_gameweek(user, gameweek):
+        if gameweek is None:
+            df = merged_df[merged_df['Position'] <= 11]
+        else:
+            df = merged_df[(merged_df['Position'] <= 11) & (merged_df['Gameweek'] == gameweek)]
+        points = df[df['User'] == user]['total_points'].sum()
+        return points if points > 0 else 0
+    
+    # Get qualifiers stage key and gameweek
+    qualifiers_key = [k for k in cup_dict.keys() if 'Qualifier' in k][0]
+    qualifiers_gw = extract_gameweek(qualifiers_key)
+    qualifiers = cup_dict[qualifiers_key]
+    
+    # Calculate qualifier points (only if gameweek has passed)
+    if qualifiers_gw <= current_gw:
+        qualifier_points = {user: get_points_for_gameweek(user, qualifiers_gw) for user in qualifiers}
+        eliminated_user = min(qualifier_points, key=qualifier_points.get)
+    else:
+        qualifier_points = {user: 0 for user in qualifiers}  # No scores yet
+        eliminated_user = None
+    
+    # Function to determine winner of a matchup based on gameweek
+    def get_winner(user1, user2, gameweek):
+        p1 = get_points_for_gameweek(user1, gameweek)
+        p2 = get_points_for_gameweek(user2, gameweek)
+        return user1 if p1 >= p2 else user2
+    
+    # Get quarter finals stage key and gameweek
+    qf_key = [k for k in cup_dict.keys() if 'Quarter' in k][0]
+    qf_gw = extract_gameweek(qf_key)
+    qf_matches = cup_dict[qf_key] if qf_gw <= current_gw else []
+    qf_winners = [get_winner(u1, u2, qf_gw) for u1, u2 in qf_matches] if qf_gw <= current_gw else []
+    
+    # Get semi finals stage key and gameweek
+    sf_key = [k for k in cup_dict.keys() if 'Semi' in k][0]
+    sf_gw = extract_gameweek(sf_key)
+    sf_matches = cup_dict[sf_key] if sf_gw <= current_gw else []
+    sf_winners = [get_winner(u1, u2, sf_gw) for u1, u2 in sf_matches] if sf_gw <= current_gw else []
+    
+    # Find final winner
+    final_winner = sf_winners[0] if len(sf_winners) > 0 else None
+    final_points = get_points_for_gameweek(final_winner, sf_gw) if final_winner else 0
+    
+    # Create cup bracket visualization
+    bracket_rows = []
+    
+    # Qualifiers Round
+    bracket_rows.append(html.Div([
+        html.H5(f"QUALIFYING ROUND (GW{qualifiers_gw})", style={"backgroundColor": "#1a1a1a", "padding": "10px", "borderRadius": "5px", "marginTop": "20px"}),
+        html.Table([
+            html.Tbody([
+                html.Tr([
+                    html.Td(html.Div([
+                        html.Div(user, style={"fontWeight": "bold", "padding": "8px"}),
+                        html.Div(f"{qualifier_points[user]} pts" if qualifiers_gw <= current_gw else "TBD", style={"fontSize": "12px", "color": "#aaa"})
+                    ], style={"border": "1px solid #444", "padding": "5px", "marginBottom": "5px", "borderRadius": "3px", 
+                              "backgroundColor": "#2a2a2a"}), style={"padding": "5px"})
+                    for user in qualifiers
+                ])
+            ])
+        ], style={"width": "100%", "borderCollapse": "collapse"})
+    ], style={"marginTop": "20px"}))
+    
+    # Eliminated user (only show if qualifiers have happened)
+    if qualifiers_gw <= current_gw and eliminated_user:
+        bracket_rows.append(html.Div([
+            html.P([
+                html.Span("❌ ELIMINATED: ", style={"color": "#ff6b6b", "fontWeight": "bold"}),
+                html.Span(f"{eliminated_user}", style={"color": "#ff9999"}),
+                html.Span(f" ({qualifier_points[eliminated_user]} pts)", style={"color": "#777", "fontSize": "12px"})
+            ], style={"marginTop": "15px", "padding": "10px", "backgroundColor": "#3a1a1a", "borderRadius": "5px", "border": "1px solid #ff6b6b"})
+        ]))
+    
+    # Quarter Finals (show if qualifiers have happened or if it's the next upcoming stage)
+    show_qf = qualifiers_gw <= current_gw or (current_gw < qualifiers_gw and qf_gw > current_gw)
+    if show_qf:
+        # Prepare match data
+        if qf_matches:
+            match_data = list(zip(qf_matches, qf_winners))
+        else:
+            match_data = [(match, None) for match in cup_dict[qf_key]]
+        
+        bracket_rows.append(html.Div([
+            html.H5(f"QUARTER FINALS (GW{qf_gw})", style={"backgroundColor": "#1a1a1a", "padding": "10px", "borderRadius": "5px", "marginTop": "20px"}),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.Div(u1, style={"padding": "8px", "fontWeight": "bold" if qf_gw <= current_gw and winner and u1 == winner else "normal", 
+                                           "color": "#4ade80" if qf_gw <= current_gw and winner and u1 == winner else "#999"}),
+                        html.Div(f"{get_points_for_gameweek(u1, qf_gw)} pts" if qf_gw <= current_gw else "TBD", style={"fontSize": "12px", "color": "#777"})
+                    ], style={"border": "1px solid #444", "padding": "5px", "marginBottom": "3px", "borderRadius": "3px",
+                             "backgroundColor": "#2a2a2a" if qf_gw <= current_gw and winner and u1 != winner else "#1a3a1a" if qf_gw <= current_gw and winner else "#2a2a2a"}),
+                    html.Div([
+                        html.Div(u2, style={"padding": "8px", "fontWeight": "bold" if qf_gw <= current_gw and winner and u2 == winner else "normal",
+                                           "color": "#4ade80" if qf_gw <= current_gw and winner and u2 == winner else "#999"}),
+                        html.Div(f"{get_points_for_gameweek(u2, qf_gw)} pts" if qf_gw <= current_gw else "TBD", style={"fontSize": "12px", "color": "#777"})
+                    ], style={"border": "1px solid #444", "padding": "5px", "marginBottom": "5px", "borderRadius": "3px",
+                             "backgroundColor": "#2a2a2a" if qf_gw <= current_gw and winner and u2 != winner else "#1a3a1a" if qf_gw <= current_gw and winner else "#2a2a2a"}),
+                    html.Div(f"Winner: {winner}" if qf_gw <= current_gw and winner else "TBD", style={"fontSize": "12px", "fontWeight": "bold", "color": "#4ade80" if qf_gw <= current_gw and winner else "#666", 
+                                                          "marginTop": "5px", "paddingTop": "5px", "borderTop": "1px solid #444"})
+                ], style={"marginRight": "20px", "marginBottom": "15px", "padding": "10px", "border": "1px solid #555", "borderRadius": "5px"})
+                for (u1, u2), winner in match_data
+            ], style={"display": "flex", "flexWrap": "wrap", "marginTop": "15px"})
+        ]))
+    
+    # Semi Finals (show if quarter finals have happened or if it's the next upcoming stage)
+    show_sf = qf_gw <= current_gw or (current_gw < qf_gw and sf_gw > current_gw)
+    if show_sf:
+        # Prepare match data
+        if sf_matches:
+            match_data = list(zip(sf_matches, sf_winners))
+        else:
+            match_data = [(match, None) for match in cup_dict[sf_key]]
+        
+        bracket_rows.append(html.Div([
+            html.H5(f"SEMI FINALS (GW{sf_gw})", style={"backgroundColor": "#1a1a1a", "padding": "10px", "borderRadius": "5px", "marginTop": "20px"}),
+            html.Div([
+                html.Div([
+                    html.Div(u1, style={"padding": "8px", "fontWeight": "bold" if sf_gw <= current_gw and winner and u1 == winner else "normal",
+                                       "color": "#4ade80" if sf_gw <= current_gw and winner and u1 == winner else "#999"}),
+                    html.Div(f"{get_points_for_gameweek(u1, sf_gw)} pts" if sf_gw <= current_gw else "TBD", style={"fontSize": "12px", "color": "#777"}),
+                    html.Div("vs", style={"textAlign": "center", "margin": "5px 0", "color": "#666"}),
+                    html.Div(u2, style={"padding": "8px", "fontWeight": "bold" if sf_gw <= current_gw and winner and u2 == winner else "normal",
+                                       "color": "#4ade80" if sf_gw <= current_gw and winner and u2 == winner else "#999"}),
+                    html.Div(f"{get_points_for_gameweek(u2, sf_gw)} pts" if sf_gw <= current_gw else "TBD", style={"fontSize": "12px", "color": "#777"})
+                ], style={"marginRight": "30px", "marginBottom": "15px", "padding": "10px", "border": "1px solid #555", "borderRadius": "5px"})
+                for (u1, u2), winner in match_data
+            ], style={"display": "flex", "flexWrap": "wrap", "marginTop": "15px"})
+        ]))
+    
+    # Final Winner (only show if semi finals have occurred)
+    if sf_gw <= current_gw and final_winner:
+        bracket_rows.append(html.Div([
+            html.H5("🏆 CHAMPION 🏆", style={"backgroundColor": "#1a3a1a", "padding": "15px", "borderRadius": "5px", 
+                                              "marginTop": "20px", "textAlign": "center", "border": "2px solid #4ade80"}),
+            html.Div(final_winner, style={"fontSize": "36px", "fontWeight": "bold", "color": "#4ade80", 
+                                          "textAlign": "center", "marginTop": "15px", "marginBottom": "10px"}),
+            html.Div(f"{final_points} points (GW{sf_gw})", style={"textAlign": "center", "color": "#aaa", "fontSize": "14px"})
+        ]))
+    
+    return html.Div(bracket_rows, style={"color": "white", "padding": "20px"})
 
 
 def get_aggregate_data_based_on_filter(merged_df, filter_type, column_name):
@@ -409,7 +577,8 @@ app.layout = html.Div([
         value="all-users-view", 
         children=[
             dcc.Tab(label="All Users Stats", value="all-users-view"),
-            dcc.Tab(label="User Stats", value="single-user-view")
+            dcc.Tab(label="User Stats", value="single-user-view"),
+            dcc.Tab(label="Cup", value="cup-view")
         ],
     ),
 
@@ -472,6 +641,11 @@ def render_tab(tab):
                     html.Div([dcc.Graph(id="pie-chart")], className="graph-container")
                 ], style={"width": "48%", "display": "inline-block", "paddingLeft": "20px"})
             ])
+        ])
+    elif tab == "cup-view":
+        tab_data = html.Div([
+            html.H4("Cup Competition"),
+            get_cup_graphic(merged_df, CUP)
         ])
     return tab_data
 
