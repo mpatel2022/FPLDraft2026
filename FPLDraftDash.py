@@ -13,10 +13,10 @@ import os
 # league id found by going to the end point: https://draft.premierleague.com/api/bootstrap-dynamic
 league_id = 8918
 url_all = 'https://draft.premierleague.com/api/bootstrap-static'
-LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
-# LOCAL_DIR = "."
+# LOCAL_DIR = "/home/mpatel99/FPLDraft2026"
+LOCAL_DIR = "."
 
-refresh_data = False
+refresh_data = True
 
 IMAGES_LOCATION = 'assets\\'
 
@@ -293,9 +293,15 @@ def get_cup_graphic(merged_df, cup_dict):
     sf_matches = cup_dict[sf_key] if sf_gw <= current_gw else []
     sf_winners = [get_winner(u1, u2, sf_gw) for u1, u2 in sf_matches] if sf_gw <= current_gw else []
     
-    # Find final winner
-    final_winner = sf_winners[0] if len(sf_winners) > 0 else None
-    final_points = get_points_for_gameweek(final_winner, sf_gw) if final_winner else 0
+    # Final stage is decided on GW36 using semi-final winners
+    final_gw = 36
+    final_match = tuple(sf_winners) if len(sf_winners) == 2 else None
+    if final_match and current_gw >= final_gw:
+        final_winner = get_winner(final_match[0], final_match[1], final_gw)
+        final_points = get_points_for_gameweek(final_winner, final_gw)
+    else:
+        final_winner = None
+        final_points = 0
     
     # Create cup bracket visualization
     bracket_rows = []
@@ -384,14 +390,33 @@ def get_cup_graphic(merged_df, cup_dict):
             ], style={"display": "flex", "flexWrap": "wrap", "marginTop": "15px"})
         ]))
     
-    # Final Winner (only show if semi finals have occurred)
-    if sf_gw <= current_gw and final_winner:
+    # Final Stage (GW36) based on semi-final winners
+    if final_match:
+        final_display = []
+        final_display.append(html.Div([
+            html.H5(f"FINAL (GW{final_gw})", style={"backgroundColor": "#1a1a1a", "padding": "10px", "borderRadius": "5px", "marginTop": "20px"}),
+            html.Div([
+                html.Div([
+                    html.Div(final_match[0], style={"padding": "8px", "fontWeight": "bold", "color": "#4ade80" if final_winner == final_match[0] else "#999"}),
+                    html.Div(f"{get_points_for_gameweek(final_match[0], final_gw)} pts" if current_gw >= final_gw else "TBD", style={"fontSize": "12px", "color": "#777"})
+                ], style={"border": "1px solid #444", "padding": "10px", "borderRadius": "5px", "marginRight": "20px", "backgroundColor": "#2a2a2a"}),
+                html.Div([
+                    html.Div(final_match[1], style={"padding": "8px", "fontWeight": "bold", "color": "#4ade80" if final_winner == final_match[1] else "#999"}),
+                    html.Div(f"{get_points_for_gameweek(final_match[1], final_gw)} pts" if current_gw >= final_gw else "TBD", style={"fontSize": "12px", "color": "#777"})
+                ], style={"border": "1px solid #444", "padding": "10px", "borderRadius": "5px", "backgroundColor": "#2a2a2a"})
+            ], style={"display": "flex", "flexWrap": "wrap", "marginTop": "15px"}),
+            html.Div(f"Winner: {final_winner}" if final_winner else "Winner: TBD", style={"marginTop": "10px", "fontSize": "14px", "fontWeight": "bold", "color": "#4ade80" if final_winner else "#666"})
+        ]))
+        bracket_rows.extend(final_display)
+    
+    # Final Winner (only show if final has been played)
+    if current_gw >= final_gw and final_winner:
         bracket_rows.append(html.Div([
             html.H5("🏆 CHAMPION 🏆", style={"backgroundColor": "#1a3a1a", "padding": "15px", "borderRadius": "5px", 
                                               "marginTop": "20px", "textAlign": "center", "border": "2px solid #4ade80"}),
             html.Div(final_winner, style={"fontSize": "36px", "fontWeight": "bold", "color": "#4ade80", 
                                           "textAlign": "center", "marginTop": "15px", "marginBottom": "10px"}),
-            html.Div(f"{final_points} points (GW{sf_gw})", style={"textAlign": "center", "color": "#aaa", "fontSize": "14px"})
+            html.Div(f"{final_points} points (GW{final_gw})", style={"textAlign": "center", "color": "#aaa", "fontSize": "14px"})
         ]))
     
     return html.Div(bracket_rows, style={"color": "white", "padding": "20px"})
