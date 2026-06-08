@@ -1403,4 +1403,4 @@ def update_squad_minutes_played_graph(filter_type, view_mode):
 # -------------------------------
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host='0.0.0.0', port=8080)
