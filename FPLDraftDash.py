@@ -464,6 +464,8 @@ with open(f'{LOCAL_DIR}/metadata.pickle', 'rb') as handle:
     all_data = pickle.load(handle)    
 
 next_gameweek = all_data['events']['next']
+if not next_gameweek:
+    next_gameweek = 39
 gameweeks = np.arange(next_gameweek)[1:]
 
 # Mapping
